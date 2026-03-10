@@ -138,7 +138,7 @@ class SumoClient:
             w1_wins = data.get("rikishiWins", 0)
             w2_wins = data.get("opponentWins", 0)
             # Get recent matches for the dot display
-            matches = data.get("matches", [])[:13]  # Last 13 matches for dots
+            matches = (data.get("matches") or [])[:13]  # Last 13 matches for dots
             return w1_wins, w2_wins, matches
         except requests.HTTPError:
             return 0, 0, []
@@ -189,19 +189,7 @@ def format_comparison(
     recent2: list[dict],
     use_color: bool = True,
 ) -> str:
-    """Format the wrestler comparison as a TV-style overlay."""
-
-    # ANSI colors (or empty strings if colors disabled)
-    if use_color:
-        BLUE = "\033[94m"
-        RED = "\033[91m"
-        GREEN = "\033[42m\033[30m"  # Green background, black text
-        GRAY = "\033[100m\033[97m"  # Gray background, white text
-        RESET = "\033[0m"
-        BOLD = "\033[1m"
-        DIM = "\033[2m"
-    else:
-        BLUE = RED = GREEN = GRAY = RESET = BOLD = DIM = ""
+    """Format the wrestler comparison as a TV-style overlay using Rich markup."""
 
     # Extract data
     wins1 = record1.wins if record1 else 0
@@ -216,11 +204,20 @@ def format_comparison(
     width = 100
     output = []
 
+    # Helper to wrap text with Rich markup (or plain if colors disabled)
+    def style(text: str, markup: str) -> str:
+        if use_color:
+            return f"[{markup}]{text}[/{markup.split()[0]}]"
+        return text
+
     # Top border
     output.append("╔" + "═" * width + "╗")
 
     # Head-to-head section (centered at top)
-    h2h_display = f"{BLUE}{BOLD}{h2h_w1}{RESET} vs {RED}{BOLD}{h2h_w2}{RESET}"
+    if use_color:
+        h2h_display = f"[bold blue]{h2h_w1}[/bold blue] vs [bold red]{h2h_w2}[/bold red]"
+    else:
+        h2h_display = f"{h2h_w1} vs {h2h_w2}"
     h2h_line = f"{h2h_w1} vs {h2h_w2}"
     padding = (width - len(h2h_line)) // 2
     output.append("║" + " " * padding + h2h_display + " " * (width - padding - len(h2h_line)) + "║")
@@ -230,9 +227,9 @@ def format_comparison(
     dots = ""
     for m in h2h_matches:
         if m.get("winnerId") == wrestler1.id:
-            dots += f"{BLUE}●{RESET} "
+            dots += "[blue]●[/blue] " if use_color else "● "
         else:
-            dots += f"{RED}●{RESET} "
+            dots += "[red]●[/red] " if use_color else "● "
     dots_plain = "● " * len(h2h_matches)
     dots_padding = (width - len(dots_plain.strip())) // 2
     if dots:
@@ -243,20 +240,29 @@ def format_comparison(
     output.append("╠" + "═" * width + "╣")
 
     # Main section with wrestlers on sides and stats in center
-    name1 = f"{wrestler1.shikona_en} ({wins1}-{losses1})"
-    name2 = f"{wrestler2.shikona_en} ({wins2}-{losses2})"
+    name1_plain = f"{wrestler1.shikona_en} ({wins1}-{losses1})"
+    name2_plain = f"{wrestler2.shikona_en} ({wins2}-{losses2})"
 
     # Names row
     side_width = 28
     center_width = width - (side_width * 2)
-    output.append("║" + f"{BOLD}{name1}{RESET}".ljust(side_width + len(BOLD) + len(RESET)) +
+    name1_styled = style(name1_plain, "bold") if use_color else name1_plain
+    name2_styled = style(name2_plain, "bold") if use_color else name2_plain
+    # Calculate padding based on plain text length
+    name1_pad = side_width - len(name1_plain)
+    name2_pad = side_width - len(name2_plain)
+    output.append("║" + name1_styled + " " * name1_pad +
                   " " * center_width +
-                  f"{BOLD}{name2}{RESET}".rjust(side_width + len(BOLD) + len(RESET)) + "║")
+                  " " * name2_pad + name2_styled + "║")
 
     # Ranks row
-    output.append("║" + f"{DIM}{rank1}{RESET}".ljust(side_width + len(DIM) + len(RESET)) +
+    rank1_styled = style(rank1, "dim") if use_color else rank1
+    rank2_styled = style(rank2, "dim") if use_color else rank2
+    rank1_pad = side_width - len(rank1)
+    rank2_pad = side_width - len(rank2)
+    output.append("║" + rank1_styled + " " * rank1_pad +
                   " " * center_width +
-                  f"{DIM}{rank2}{RESET}".rjust(side_width + len(DIM) + len(RESET)) + "║")
+                  " " * rank2_pad + rank2_styled + "║")
 
     output.append("║" + " " * width + "║")
 
@@ -309,7 +315,8 @@ def format_comparison(
     def build_tourney_boxes(tournaments: list, max_count: int = 5) -> tuple[str, str, int]:
         """Build two lines: dates and records. Returns (line1, line2, plain_length)."""
         if not tournaments:
-            return ("No recent data", "", 14)
+            no_data = "No recent data"
+            return (no_data, " " * len(no_data), len(no_data))
 
         boxes_line1 = []
         boxes_line2 = []
@@ -318,10 +325,13 @@ def format_comparison(
             name = format_basho_name(t["bashoId"])
             record = f"{t['wins']}-{t['losses']}"
             is_good = t["wins"] >= t["losses"]
-            bg = GREEN if is_good else GRAY
-            # Fixed width boxes (9 chars each)
-            boxes_line1.append(f"{bg}{name:^9}{RESET}")
-            boxes_line2.append(f"{bg}{record:^9}{RESET}")
+            if use_color:
+                bg = "on green" if is_good else "on bright_black"
+                boxes_line1.append(f"[{bg}]{name:^9}[/{bg}]")
+                boxes_line2.append(f"[{bg}]{record:^9}[/{bg}]")
+            else:
+                boxes_line1.append(f"{name:^9}")
+                boxes_line2.append(f"{record:^9}")
             plain_len += 9
 
         return "".join(boxes_line1), "".join(boxes_line2), plain_len
@@ -329,13 +339,16 @@ def format_comparison(
     t1_line1, t1_line2, t1_len = build_tourney_boxes(recent1, 5)
     t2_line1, t2_line2, t2_len = build_tourney_boxes(recent2, 5)
 
-    # Calculate padding to put wrestler 1's history on left, wrestler 2's on right
-    gap = width - 2 - t1_len - t2_len
-    if gap < 2:
-        gap = 2
+    # Calculate gap between left and right tournament boxes
+    content_len = t1_len + t2_len
+    gap = max(2, width - content_len)
 
-    output.append("║" + t1_line1 + " " * gap + t2_line1 + "║")
-    output.append("║" + t1_line2 + " " * gap + t2_line2 + "║")
+    # Calculate right padding to ensure line reaches exactly width
+    actual_content = t1_len + gap + t2_len
+    right_pad = max(0, width - actual_content)
+
+    output.append("║" + t1_line1 + " " * gap + t2_line1 + " " * right_pad + "║")
+    output.append("║" + t1_line2 + " " * gap + t2_line2 + " " * right_pad + "║")
 
     # Bottom border
     output.append("╚" + "═" * width + "╝")
