@@ -270,7 +270,7 @@ def format_comparison(
     def format_stat_row(val1: str, label: str, val2: str) -> str:
         left = " " * side_width
         stat_left = val1.rjust(18)
-        stat_label = label.center(8)
+        stat_label = label.center(max(8, len(label) + 2))
         stat_right = val2.ljust(18)
         center = stat_left + stat_label + stat_right
         right = " " * (width - side_width - len(center))
@@ -306,6 +306,15 @@ def format_comparison(
 
     # Stable
     output.append(format_stat_row(wrestler1.heya[:18], "BEYA", wrestler2.heya[:18]))
+
+    # Country (derived from shusshin: first part before comma; Japanese prefixes → "Japan")
+    def get_country(shusshin: str) -> str:
+        first = shusshin.split(",")[0].strip()
+        if any(first.endswith(s) for s in ("-ken", "-fu", "-to", "-do")):
+            return "Japan"
+        return first
+
+    output.append(format_stat_row(get_country(wrestler1.shusshin), "COUNTRY", get_country(wrestler2.shusshin)))
 
     output.append("║" + " " * width + "║")
     output.append("╠" + "═" * width + "╣")
