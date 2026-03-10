@@ -270,7 +270,7 @@ def format_comparison(
     def format_stat_row(val1: str, label: str, val2: str) -> str:
         left = " " * side_width
         stat_left = val1.rjust(18)
-        stat_label = label.center(max(8, len(label) + 2))
+        stat_label = label.center(10)
         stat_right = val2.ljust(18)
         center = stat_left + stat_label + stat_right
         right = " " * (width - side_width - len(center))
